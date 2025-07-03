@@ -1,8 +1,9 @@
 from battery_modbus_client import BatteryModbusClient
 from dotenv import load_dotenv
 import os
-
-import influxdb_client, os, time
+import time
+from datetime import datetime
+import influxdb_client
 from influxdb_client import Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
@@ -61,7 +62,6 @@ def write_power_metric(register, metric_name):
         .field("value_watts", value)
     )
     write_api.write(bucket=bucket, org=org, record=point)
-    print(f"Wrote {metric_name} with value {value} to InfluxDB")
 
 def write_efficiency(register):
     """
@@ -79,7 +79,6 @@ def write_efficiency(register):
         .field("self_consumption_percent", eigenverbrauch)
     )
     write_api.write(bucket=bucket, org=org, record=point)
-    print(f"Wrote efficiency: self_sufficiency={autarkie}%, self_consumption={eigenverbrauch}% to InfluxDB")
 
 def write_battery_soc(register):
     """
@@ -94,7 +93,6 @@ def write_battery_soc(register):
         .field("value_percent", soc)
     )
     write_api.write(bucket=bucket, org=org, record=point)
-    print(f"Wrote battery_soc: {soc}% to InfluxDB")
 
 while True:
   write_power_metric(68, "pv_power")
@@ -106,6 +104,7 @@ while True:
   write_power_metric(80, "wallbox_solar_consumption")
   write_efficiency(82)
   write_battery_soc(83)
+  print(f"Wrote data at {datetime.now().isoformat()}")
 
   time.sleep(1)
 
