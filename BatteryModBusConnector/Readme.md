@@ -1,6 +1,6 @@
 ## Umgebung aufsetzen
 ```
-python -m venv .venv
+python3 -m venv .venv
 ```
 
 ## Umgebung Aktivieren
@@ -12,4 +12,9 @@ Windows
 
 ```
 source .venv/bin/activate
+```
+
+## Dependencies installieren
+```
+pip install -r requirenments.txt
 ```
