@@ -1,15 +1,15 @@
 ## Umgebung aufsetzen
 ```
-python -m venv .venc
+python -m venv .venv
 ```
 
 ## Umgebung Aktivieren
 Windows
 
 ```
-.venc\Scripts\Activate.ps1
+.venv\Scripts\Activate.ps1
 ```
 
 ```
-source .venc/bin/activate
+source .venv/bin/activate
 ```
