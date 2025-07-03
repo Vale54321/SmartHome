@@ -1,2 +1,3 @@
 pymodbus
 python-dotenv
+influxdb-client

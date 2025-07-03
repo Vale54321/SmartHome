@@ -1,124 +1,112 @@
-from pymodbus.client import ModbusTcpClient
-from pymodbus.constants import Endian
+from battery_modbus_client import BatteryModbusClient
 from dotenv import load_dotenv
 import os
 
+import influxdb_client, os, time
+from influxdb_client import Point
+from influxdb_client.client.write_api import SYNCHRONOUS
+
 load_dotenv()
-
-def read_modbus_register(client, register_number):
-    """
-    Reads a single Modbus holding register using its human-readable number.
-    Calculates the required address offset automatically.
-    """
-    address = register_number - 1
-    
-    response = client.read_holding_registers(address=address, count=1, slave=1)
-    
-    if not response.isError():
-        return response.registers[0]
-    else:
-        print(f"Fehler beim Lesen von Register {register_number}: {response}")
-        return None
-    
-def read_modbus_string(client, start_register, num_registers):
-    """
-    Reads a string from a sequence of Modbus holding registers.
-    """
-    address = start_register - 1
-    response = client.read_holding_registers(address=address, count=num_registers, slave=1)
-
-    if not response.isError():
-        decoded = client.convert_from_registers(
-            response.registers,
-            data_type=client.DATATYPE.STRING,
-        )
-        return decoded.strip('\x00')
-
-def read_modbus_int32(client, start_register):
-    """
-    Reads a 32-bit integer from two Modbus holding registers.
-    """
-    address = start_register - 1
-    response = client.read_holding_registers(address=address, count=2, slave=1)
-    if not response.isError():
-        return client.convert_from_registers(
-            response.registers,
-            data_type=client.DATATYPE.INT32,
-            word_order='little'
-        )
-    else:
-        print(f"Fehler beim Lesen eines 32-Bit Integers ab Register {start_register}: {response}")
-        return None
 
 ip = os.getenv("E3DC_IP")
 port = int(os.getenv("E3DC_PORT"))
+modbus_client = BatteryModbusClient(ip, port)
 
-client = ModbusTcpClient(ip, port=port)
-client.connect()
-
-magic_byte = read_modbus_register(client, 1)
+magic_byte = modbus_client.read_register(1)
 if magic_byte is not None:
     print(f"Register 40001 (Magic Byte): {hex(magic_byte)}")
 
-firmware_reg = read_modbus_register(client, 2)
+firmware_reg = modbus_client.read_register(2)
 if firmware_reg is not None:
     major_version = firmware_reg >> 8
     minor_version = firmware_reg & 0xFF
     print(f"Register 40002 (Firmware): {major_version}.{minor_version}")
 
-reg_count = read_modbus_register(client, 3)
+reg_count = modbus_client.read_register(3)
 if reg_count is not None:
     print(f"Register 40003 (Register Count): {reg_count}")
 
-manufacturer = read_modbus_string(client, 4, 16)
+manufacturer = modbus_client.read_string(4, 16)
 if manufacturer is not None:
     print(f"Register 40004-40019 (Manufacturer): {manufacturer}")
 
-model_string = read_modbus_string(client, 20, 16)
+model_string = modbus_client.read_string(20, 16)
 if model_string is not None:
     print(f"Register 40020-40035 (Modell): {model_string}")
 
-serial_num = read_modbus_string(client, 36, 16)
+serial_num = modbus_client.read_string(36, 16)
 if serial_num is not None:
     print(f"Register 40036-40051 (Serial Number): {serial_num}")
 
-firmware_version = read_modbus_string(client, 52, 16)
+firmware_version = modbus_client.read_string(52, 16)
 if firmware_version is not None:
     print(f"Register 40052-40068 (Serial Number): {firmware_version}")
 
-hausverbrauch = read_modbus_int32(client, 72)
-if hausverbrauch is not None:
-    hausverbrauch_kw = hausverbrauch / 1000
-    print(f"Register 40072 (Hausverbrauchs-Leistung): {hausverbrauch} Watt ({hausverbrauch_kw:.2f} kW)")
 
-netzleistung = read_modbus_int32(client, 74)
-if netzleistung is not None:
-    print(f"Register 40074 (Netzleistung): {netzleistung} Watt")
+token = os.environ.get("INFLUXDB_TOKEN")
+org = os.environ.get("INFLUXDB_ORG")
+url = os.environ.get("INFLUXDB_HOST")
 
-photovotaik = read_modbus_int32(client, 68)
-if photovotaik is not None:
-    print(f"Register 40068 (Photovoltaik): {photovotaik} Watt")
+write_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
 
-batterie = read_modbus_int32(client, 70)
-if batterie is not None:
-    print(f"Register 40070 (Batterie Leistung): {batterie} Watt")
+bucket=os.environ.get("INFLUXDB_BUCKET")
 
-efficency = read_modbus_register(client, 82)
-if efficency is not None:
-    autarkie = efficency >> 8
-    eigenverbrauch = efficency & 0xFF
-    print(f"Register 40082: Autarkie: {autarkie}%, Eigenverbrauch: {eigenverbrauch}%")
+write_api = write_client.write_api(write_options=SYNCHRONOUS)
+   
+def write_power_metric(register, metric_name):
+    value = modbus_client.read_int32(register)
+    point = (
+        Point("battery_modbus_metrics")
+        .tag("metric", metric_name)
+        .field("value_watts", value)
+    )
+    write_api.write(bucket=bucket, org=org, record=point)
+    print(f"Wrote {metric_name} with value {value} to InfluxDB")
 
-wallbox = read_modbus_int32(client, 78)
-if wallbox is not None:
-    print(f"Register 40078 (Wallbox): {wallbox} Watt")
+def write_efficiency(register):
+    """
+    Reads register, splits into autarkie% and eigenverbrauch%, and writes both as fields in one point.
+    """
+    val = modbus_client.read_register(register)
+    if val is None:
+        return
+    autarkie = val >> 8
+    eigenverbrauch = val & 0xFF
+    point = (
+        Point("battery_modbus_metrics")
+        .tag("metric", "efficiency")
+        .field("self_sufficiency_percent", autarkie)
+        .field("self_consumption_percent", eigenverbrauch)
+    )
+    write_api.write(bucket=bucket, org=org, record=point)
+    print(f"Wrote efficiency: self_sufficiency={autarkie}%, self_consumption={eigenverbrauch}% to InfluxDB")
 
-wallbox_solar = read_modbus_int32(client, 80)
-if wallbox_solar is not None:
-    print(f"Register 40080 (Wallbox Solarleistung): {wallbox_solar} Watt")
+def write_battery_soc(register):
+    """
+    Reads battery state-of-charge percentage and writes it as a field.
+    """
+    soc = modbus_client.read_register(register)
+    if soc is None:
+        return
+    point = (
+        Point("battery_modbus_metrics")
+        .tag("metric", "battery_soc")
+        .field("value_percent", soc)
+    )
+    write_api.write(bucket=bucket, org=org, record=point)
+    print(f"Wrote battery_soc: {soc}% to InfluxDB")
 
-magic_byte = read_modbus_register(client, 83)
-if magic_byte is not None:
-    print(f"Register 40001 (Batterie-SOC in Prozent): {magic_byte}")
+while True:
+  write_power_metric(68, "pv_power")
+  write_power_metric(70, "battery_power")
+  write_power_metric(72, "house_consumption")
+  write_power_metric(74, "grid_power")
+  write_power_metric(76, "additional_feed_in_power")
+  write_power_metric(78, "wallbox_consumption")
+  write_power_metric(80, "wallbox_solar_consumption")
+  write_efficiency(82)
+  write_battery_soc(83)
 
-client.close()
+  time.sleep(1)
+
+modbus_client.close()
