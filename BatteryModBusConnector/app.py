@@ -28,14 +28,26 @@ def read_modbus_string(client, start_register, num_registers):
     response = client.read_holding_registers(address=address, count=num_registers, slave=1)
 
     if not response.isError():
-        # Convert registers to string using DATATYPE enum
         decoded = client.convert_from_registers(
             response.registers,
             data_type=client.DATATYPE.STRING,
         )
         return decoded.strip('\x00')
+
+def read_modbus_int32(client, start_register):
+    """
+    Reads a 32-bit integer from two Modbus holding registers.
+    """
+    address = start_register - 1
+    response = client.read_holding_registers(address=address, count=2, slave=1)
+    if not response.isError():
+        return client.convert_from_registers(
+            response.registers,
+            data_type=client.DATATYPE.INT32,
+            word_order='little'
+        )
     else:
-        print(f"Fehler beim Lesen des Strings ab Register {start_register}: {response}")
+        print(f"Fehler beim Lesen eines 32-Bit Integers ab Register {start_register}: {response}")
         return None
 
 ip = os.getenv("E3DC_IP")
@@ -74,33 +86,39 @@ firmware_version = read_modbus_string(client, 52, 16)
 if firmware_version is not None:
     print(f"Register 40052-40068 (Serial Number): {firmware_version}")
 
-response = client.read_holding_registers(address=72-1, count=2, slave=1)
-if not response.isError():
-    hausverbrauch = client.convert_from_registers(
-        response.registers,
-        data_type=client.DATATYPE.INT32,
-        word_order='little'
-    )
+hausverbrauch = read_modbus_int32(client, 72)
+if hausverbrauch is not None:
     hausverbrauch_kw = hausverbrauch / 1000
     print(f"Register 40072 (Hausverbrauchs-Leistung): {hausverbrauch} Watt ({hausverbrauch_kw:.2f} kW)")
-else:
-    print(f"Fehler beim Lesen von Register 40072: {response}")
 
-response = client.read_holding_registers(address=74-1, count=2, slave=1)
-if not response.isError():
-    netzleistung = client.convert_from_registers(
-        response.registers,
-        data_type=client.DATATYPE.INT32,
-        word_order='little'
-    )
+netzleistung = read_modbus_int32(client, 74)
+if netzleistung is not None:
     print(f"Register 40074 (Netzleistung): {netzleistung} Watt")
-else:
-    print(f"Fehler beim Lesen von Register 40072: {response}")
+
+photovotaik = read_modbus_int32(client, 68)
+if photovotaik is not None:
+    print(f"Register 40068 (Photovoltaik): {photovotaik} Watt")
+
+batterie = read_modbus_int32(client, 70)
+if batterie is not None:
+    print(f"Register 40070 (Batterie Leistung): {batterie} Watt")
 
 efficency = read_modbus_register(client, 82)
 if efficency is not None:
     autarkie = efficency >> 8
     eigenverbrauch = efficency & 0xFF
     print(f"Register 40082: Autarkie: {autarkie}%, Eigenverbrauch: {eigenverbrauch}%")
+
+wallbox = read_modbus_int32(client, 78)
+if wallbox is not None:
+    print(f"Register 40078 (Wallbox): {wallbox} Watt")
+
+wallbox_solar = read_modbus_int32(client, 80)
+if wallbox_solar is not None:
+    print(f"Register 40080 (Wallbox Solarleistung): {wallbox_solar} Watt")
+
+magic_byte = read_modbus_register(client, 83)
+if magic_byte is not None:
+    print(f"Register 40001 (Batterie-SOC in Prozent): {magic_byte}")
 
 client.close()
