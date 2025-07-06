@@ -77,6 +77,7 @@ def write_efficiency(register):
         .tag("metric", "self_consumption")
         .field("value_percent", eigenverbrauch)
     )
+    write_api.write(bucket=bucket, org=org, record=point)
     point = (
         Point("battery_modbus_metrics")
         .tag("metric", "self_sufficiency")
