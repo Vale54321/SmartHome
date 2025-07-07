@@ -36,13 +36,15 @@ func main() {
 	router.Use(cors.Default())
 
 	router.GET("/api/consumption", func(c *gin.Context) {
-		query := `from(bucket: "battery-modbus")
-			|> range(start: -1h)
+		rangeInHours := c.DefaultQuery("range", "1")
+		aggregateInMinutes := c.DefaultQuery("aggregate", "1")
+		query := fmt.Sprintf(`from(bucket: "battery-modbus")
+			|> range(start: -%sh)
 			|> filter(fn: (r) => r["_measurement"] == "battery_modbus_metrics")
 			|> filter(fn: (r) => r["_field"] == "value_watts")
 			|> filter(fn: (r) => r["metric"] == "house_consumption")
-			|> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
-			|> yield(name: "mean")`
+			|> aggregateWindow(every: %sm, fn: mean, createEmpty: false)
+			|> yield(name: "mean")`, rangeInHours, aggregateInMinutes)
 
 		result, err := queryAPI.Query(context.Background(), query)
 		if err != nil {
