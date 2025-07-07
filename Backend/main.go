@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/joho/godotenv"
 )
@@ -19,24 +23,54 @@ func main() {
 	token := os.Getenv("INFLUXDB_TOKEN")
 	org := os.Getenv("INFLUXDB_ORG")
 	url := os.Getenv("INFLUXDB_HOST")
+
+	if token == "" || org == "" || url == "" {
+		log.Fatal("Missing INFLUXDB config")
+	}
+
 	client := influxdb2.NewClient(url, token)
-
+	defer client.Close()
 	queryAPI := client.QueryAPI(org)
-	query := `from(bucket: "battery-modbus")
-                |> range(start: -10m)
-                |> filter(fn: (r) => r["_measurement"] == "battery_modbus_metrics")
-                |> filter(fn: (r) => r["_field"] == "value_watts")
-                |> filter(fn: (r) => r["metric"] == "house_consumption")
-                |> yield(name: "filtered")`
 
-	results, err := queryAPI.Query(context.Background(), query)
-	if err != nil {
-		log.Fatal(err)
+	router := gin.Default()
+	router.Use(cors.Default())
+
+	router.GET("/api/consumption", func(c *gin.Context) {
+		query := `from(bucket: "battery-modbus")
+			|> range(start: -1h)
+			|> filter(fn: (r) => r["_measurement"] == "battery_modbus_metrics")
+			|> filter(fn: (r) => r["_field"] == "value_watts")
+			|> filter(fn: (r) => r["metric"] == "house_consumption")
+			|> aggregateWindow(every: 1m, fn: mean, createEmpty: false)
+			|> yield(name: "mean")`
+
+		result, err := queryAPI.Query(context.Background(), query)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		points := []gin.H{}
+		for result.Next() {
+			points = append(points, gin.H{
+				"time":  result.Record().Time().Format(time.RFC3339),
+				"value": result.Record().Value(),
+			})
+		}
+
+		if err := result.Err(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, points)
+	})
+
+	// Run server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8085"
 	}
-	for results.Next() {
-		fmt.Println(results.Record())
-	}
-	if err := results.Err(); err != nil {
-		log.Fatal(err)
-	}
+	fmt.Println("Serving on http://localhost:" + port)
+	router.Run(":" + port)
 }
