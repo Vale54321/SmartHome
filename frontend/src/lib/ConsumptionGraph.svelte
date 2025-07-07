@@ -2,23 +2,33 @@
   import { onMount, onDestroy } from 'svelte';
   import { Chart, registerables } from 'chart.js';
 
-  // This will hold the chart instance
   let chart: Chart | null = null;
-  // This is the canvas element where the chart will be drawn
+
   let chartCanvas: HTMLCanvasElement;
-  // Reactive variables to hold the state of our data fetching
+
   let consumptionData: { time: string; value: number }[] = [];
   let error: string | null = null;
   let isLoading = true;
   let intervalId: number;
+  let timeRange = 1; // Default to 1 hour
 
   // Register all the necessary components for Chart.js
   Chart.register(...registerables);
 
   async function fetchData() {
+    isLoading = true;
     try {
-      // Fetch data using the Vite proxy.
-      const response = await fetch('/api/consumption');
+      let aggregate = 1; // Default to 1 minute
+      if (timeRange > 1 && timeRange <= 6) {
+        aggregate = 5; // 5 minutes for 6h range
+      } else if (timeRange > 6 && timeRange <= 12) {
+        aggregate = 10; // 10 minutes for 12h range
+      } else if (timeRange > 12 && timeRange <= 24) {
+        aggregate = 15; // 15 minutes for 24h range
+      } else if (timeRange > 24) {
+        aggregate = 60; // 1 hour for 1 week range
+      }
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/consumption?range=${timeRange}&aggregate=${aggregate}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
@@ -30,36 +40,33 @@
         throw new Error("API returned empty or invalid data.");
       }
 
-      // Just update the data here. The chart will be created reactively.
       consumptionData = data;
 
     } catch (e) {
-      // Handle any errors during the fetch
       error = e.message;
       console.error("Failed to fetch or process consumption data:", e);
     } finally {
-      // Set loading to false when the process is complete
       isLoading = false;
     }
   }
 
-  // onMount is a lifecycle function that runs after the component is rendered to the DOM
+  function setTimeRange(newRange: number) {
+    timeRange = newRange;
+    fetchData();
+  }
+
   onMount(() => {
-    fetchData(); // Fetch initial data
-    intervalId = setInterval(fetchData, 60000); // Refresh every minute
+    fetchData();
+    intervalId = setInterval(fetchData, 60000);
   });
 
-  // Reactive statement: This code runs whenever the variables it depends on change.
-  // In this case, it runs when `chartCanvas` or `consumptionData` are updated.
   $: if (chartCanvas && consumptionData.length > 0) {
     createChart();
   }
 
   function createChart() {
-    // We already check for chartCanvas and data in the reactive statement, but it's good practice.
     if (!chartCanvas || !consumptionData.length) return;
 
-    // Destroy the old chart instance before creating a new one to prevent memory leaks
     if (chart) {
       chart.destroy();
     }
@@ -140,6 +147,14 @@
   });
 </script>
 
+<div class="time-range-selector">
+  <button class:active={timeRange === 1} on:click={() => setTimeRange(1)}>1 Hour</button>
+  <button class:active={timeRange === 6} on:click={() => setTimeRange(6)}>6 Hours</button>
+  <button class:active={timeRange === 12} on:click={() => setTimeRange(12)}>12 Hours</button>
+  <button class:active={timeRange === 24} on:click={() => setTimeRange(24)}>24 Hours</button>
+  <button class:active={timeRange === 168} on:click={() => setTimeRange(168)}>1 Week</button>
+</div>
+
 <div class="graph-container">
   {#if isLoading}
     <p>Loading consumption data...</p>
@@ -160,6 +175,28 @@
 
 
 <style>
+  .time-range-selector {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1em;
+  }
+
+  .time-range-selector button {
+    background-color: #3a3a3a;
+    color: #fff;
+    border: 1px solid #ff3e00;
+    padding: 0.5em 1em;
+    margin: 0 0.5em;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+  }
+
+  .time-range-selector button:hover,
+  .time-range-selector button.active {
+    background-color: #ff3e00;
+  }
+
   .graph-container {
     height: 60vh;
     width: 100%;
