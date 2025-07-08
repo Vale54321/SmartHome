@@ -45,15 +45,20 @@
     const { house_consumption, pv_power, battery_power, grid_power } = powerData;
     const sources = [];
 
+    // Battery charging
+    if (battery_power > 0) {
+      sources.push({ name: 'Batterie lädt', value: battery_power, color: '#388E3C' });
+    }
+
     // Solar contribution (power directly used from PV)
-    const solar_to_house = Math.max(0, pv_power - Math.max(0, -grid_power) - Math.max(0, -battery_power));
+    const solar_to_house = Math.max(0, pv_power - Math.max(0, -grid_power) - Math.max(0, battery_power));
     if (solar_to_house > 0) {
       sources.push({ name: 'Solar', value: solar_to_house, color: '#42b883' });
     }
 
     // Battery contribution (discharging)
-    if (battery_power > 0) {
-      sources.push({ name: 'Batterie', value: battery_power, color: '#007bff' });
+    if (battery_power < 0) {
+      sources.push({ name: 'Batterie', value: -battery_power, color: '#007bff' });
     }
 
     // Grid contribution (drawing from grid)
