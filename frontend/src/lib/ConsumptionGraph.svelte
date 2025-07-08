@@ -2,6 +2,14 @@
   import { onMount, onDestroy } from 'svelte';
   import { Chart, registerables } from 'chart.js';
 
+  export let endpoint: string;
+  export let chartTitle: string;
+  export let yAxisTitle: string;
+  export let timeRange: number;
+  export let unit = 'W';
+  export let lineColor = '#ff3e00';
+  export let fillColor = 'rgba(255, 62, 0, 0.1)';
+
   let chart: Chart | null = null;
 
   let chartCanvas: HTMLCanvasElement;
@@ -10,9 +18,7 @@
   let error: string | null = null;
   let isLoading = true;
   let intervalId: number;
-  let timeRange = 1; // Default to 1 hour
 
-  // Register all the necessary components for Chart.js
   Chart.register(...registerables);
 
   async function fetchData() {
@@ -28,7 +34,7 @@
       } else if (timeRange > 24) {
         aggregate = 60; // 1 hour for 1 week range
       }
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/consumption?range=${timeRange}&aggregate=${aggregate}`);
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/${endpoint}?range=${timeRange}&aggregate=${aggregate}`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
@@ -43,22 +49,29 @@
       consumptionData = data;
 
     } catch (e) {
-      error = e.message;
+      if (e instanceof Error) {
+        error = e.message;
+      } else {
+        error = String(e);
+      }
       console.error("Failed to fetch or process consumption data:", e);
     } finally {
       isLoading = false;
     }
   }
 
-  function setTimeRange(newRange: number) {
-    timeRange = newRange;
-    fetchData();
-  }
-
   onMount(() => {
     fetchData();
     intervalId = setInterval(fetchData, 60000);
   });
+
+  let initialMount = true;
+  $: if (timeRange) {
+    if (!initialMount) {
+      fetchData();
+    }
+    initialMount = false;
+  }
 
   $: if (chartCanvas && consumptionData.length > 0) {
     createChart();
@@ -82,16 +95,16 @@
       data: {
         labels: labels,
         datasets: [{
-          label: 'House Consumption (Watts)',
+          label: chartTitle,
           data: values,
-          borderColor: '#ff3e00',
-          backgroundColor: 'rgba(255, 62, 0, 0.1)',
+          borderColor: lineColor,
+          backgroundColor: fillColor,
           fill: true,
           tension: 0.4,
-          pointBackgroundColor: '#ff3e00',
+          pointBackgroundColor: lineColor,
           pointBorderColor: '#fff',
           pointHoverBackgroundColor: '#fff',
-          pointHoverBorderColor: '#ff3e00'
+          pointHoverBorderColor: lineColor
         }]
       },
       options: {
@@ -102,13 +115,15 @@
             beginAtZero: false,
             title: {
               display: true,
-              text: 'Consumption (Watts)'
-            }
+              text: yAxisTitle
+            },
+            min: unit === '%' ? 0 : undefined,
+            max: unit === '%' ? 100 : undefined
           },
           x: {
             title: {
               display: true,
-              text: 'Time'
+              text: 'Zeit'
             }
           }
         },
@@ -125,7 +140,7 @@
                   label += ': ';
                 }
                 if (context.parsed.y !== null) {
-                  label += context.parsed.y.toFixed(2) + ' W';
+                  label += context.parsed.y.toFixed(2) + ` ${unit}`;
                 }
                 return label;
               }
@@ -147,56 +162,17 @@
   });
 </script>
 
-<div class="time-range-selector">
-  <button class:active={timeRange === 1} on:click={() => setTimeRange(1)}>1 Hour</button>
-  <button class:active={timeRange === 6} on:click={() => setTimeRange(6)}>6 Hours</button>
-  <button class:active={timeRange === 12} on:click={() => setTimeRange(12)}>12 Hours</button>
-  <button class:active={timeRange === 24} on:click={() => setTimeRange(24)}>24 Hours</button>
-  <button class:active={timeRange === 168} on:click={() => setTimeRange(168)}>1 Week</button>
-</div>
-
 <div class="graph-container">
   {#if isLoading}
-    <p>Loading consumption data...</p>
+    <p>Lade Verbrauchsdaten...</p>
   {:else if error}
-    <p class="error">Could not fetch data: {error}</p>
+    <p class="error">Daten konnten nicht geladen werden: {error}</p>
   {:else}
     <canvas bind:this={chartCanvas}></canvas>
   {/if}
 </div>
 
-<!-- Data logging section -->
-{#if consumptionData.length > 0}
-  <div class="data-log">
-    <h3>Raw Data Received:</h3>
-    <pre><code>{JSON.stringify(consumptionData, null, 2)}</code></pre>
-  </div>
-{/if}
-
-
 <style>
-  .time-range-selector {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 1em;
-  }
-
-  .time-range-selector button {
-    background-color: #3a3a3a;
-    color: #fff;
-    border: 1px solid #ff3e00;
-    padding: 0.5em 1em;
-    margin: 0 0.5em;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background-color 0.3s;
-  }
-
-  .time-range-selector button:hover,
-  .time-range-selector button.active {
-    background-color: #ff3e00;
-  }
-
   .graph-container {
     height: 60vh;
     width: 100%;

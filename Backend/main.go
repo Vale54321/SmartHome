@@ -11,6 +11,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/joho/godotenv"
 )
 
@@ -35,16 +36,44 @@ func main() {
 	router := gin.Default()
 	router.Use(cors.Default())
 
-	router.GET("/api/consumption", func(c *gin.Context) {
+	api := router.Group("/api")
+	{
+		// value_watts
+		dataType := "value_watts"
+		api.GET("/additional_feed_in_power", createMetricHandler("additional_feed_in_power", dataType, queryAPI))
+		api.GET("/battery_power", createMetricHandler("battery_power", dataType, queryAPI))
+		api.GET("/grid_power", createMetricHandler("grid_power", dataType, queryAPI))
+		api.GET("/house_consumption", createMetricHandler("house_consumption", dataType, queryAPI))
+		api.GET("/pv_power", createMetricHandler("pv_power", dataType, queryAPI))
+		api.GET("/wallbox_consumption", createMetricHandler("wallbox_consumption", dataType, queryAPI))
+		api.GET("/wallbox_solar_consumption", createMetricHandler("wallbox_solar_consumption", dataType, queryAPI))
+
+		// value_percent
+		dataType = "value_percent"
+		api.GET("/battery_soc", createMetricHandler("battery_soc", dataType, queryAPI))
+		api.GET("/self_consumption", createMetricHandler("self_consumption", dataType, queryAPI))
+		api.GET("/self_sufficiency", createMetricHandler("self_sufficiency", dataType, queryAPI))
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8085"
+	}
+	fmt.Println("Serving on http://localhost:" + port)
+	router.Run(":" + port)
+}
+
+func createMetricHandler(metricName string, dataType string, queryAPI api.QueryAPI) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		rangeInHours := c.DefaultQuery("range", "1")
 		aggregateInMinutes := c.DefaultQuery("aggregate", "1")
 		query := fmt.Sprintf(`from(bucket: "battery-modbus")
 			|> range(start: -%sh)
 			|> filter(fn: (r) => r["_measurement"] == "battery_modbus_metrics")
-			|> filter(fn: (r) => r["_field"] == "value_watts")
-			|> filter(fn: (r) => r["metric"] == "house_consumption")
+			|> filter(fn: (r) => r["_field"] == "%s")
+			|> filter(fn: (r) => r["metric"] == "%s")
 			|> aggregateWindow(every: %sm, fn: mean, createEmpty: false)
-			|> yield(name: "mean")`, rangeInHours, aggregateInMinutes)
+			|> yield(name: "mean")`, rangeInHours, dataType, metricName, aggregateInMinutes)
 
 		result, err := queryAPI.Query(context.Background(), query)
 		if err != nil {
@@ -66,13 +95,5 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, points)
-	})
-
-	// Run server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8085"
 	}
-	fmt.Println("Serving on http://localhost:" + port)
-	router.Run(":" + port)
 }
