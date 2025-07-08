@@ -53,6 +53,36 @@ func main() {
 		api.GET("/battery_soc", createMetricHandler("battery_soc", dataType, queryAPI))
 		api.GET("/self_consumption", createMetricHandler("self_consumption", dataType, queryAPI))
 		api.GET("/self_sufficiency", createMetricHandler("self_sufficiency", dataType, queryAPI))
+
+		api.GET("/now", func(c *gin.Context) {
+			query := `from(bucket: "battery-modbus")
+				|> range(start: -15m)
+				|> filter(fn: (r) => r["_measurement"] == "battery_modbus_metrics")
+				|> filter(fn: (r) => r["_field"] == "value_watts" or r["_field"] == "value_percent")
+				|> last()`
+
+			result, err := queryAPI.Query(context.Background(), query)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			data := gin.H{}
+			for result.Next() {
+				record := result.Record()
+				metric := record.ValueByKey("metric")
+				if metric != nil {
+					data[metric.(string)] = record.Value()
+				}
+			}
+
+			if err := result.Err(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			c.JSON(http.StatusOK, data)
+		})
 	}
 
 	port := os.Getenv("PORT")
