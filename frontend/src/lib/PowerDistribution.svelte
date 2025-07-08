@@ -68,7 +68,7 @@
 </script>
 
 <div class="power-distribution-container">
-  <h3>Aktueller Strommix ({powerData?.house_consumption.toFixed(0) ?? 0} W)</h3>
+  <h3>Aktueller Strommix ({powerData ? (powerData.house_consumption / 1000).toFixed(2).replace('.', ',') : '0,00'} kW)</h3>
   {#if error}
     <p class="error">Daten konnten nicht geladen werden: {error}</p>
   {:else if powerData}
@@ -78,7 +78,7 @@
         <div class="power-segment" style="width: {percentage}%; background-color: {source.color};">
           <div class="label">
             {source.name}<br/>
-            {source.value.toFixed(0)} W
+            {(source.value / 1000).toFixed(2).replace('.', ',')} kW
           </div>
         </div>
       {/each}
