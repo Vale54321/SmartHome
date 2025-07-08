@@ -1,5 +1,6 @@
 <script lang="ts">
   import ConsumptionGraph from './lib/ConsumptionGraph.svelte';
+  import PowerDistribution from './lib/PowerDistribution.svelte';
 
   let timeRange = 1; // Default to 1 hour
 
@@ -16,6 +17,8 @@
     <button class:active={timeRange === 24} on:click={() => setTimeRange(24)}>24 Stunden</button>
     <button class:active={timeRange === 168} on:click={() => setTimeRange(168)}>1 Woche</button>
   </div>
+
+  <PowerDistribution />
 
   <h1>Stromverbrauch</h1>
   <ConsumptionGraph 
