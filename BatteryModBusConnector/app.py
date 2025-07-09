@@ -47,6 +47,8 @@ if firmware_version is not None:
 token = os.environ.get("INFLUXDB_TOKEN")
 org = os.environ.get("INFLUXDB_ORG")
 url = os.environ.get("INFLUXDB_HOST")
+polling_interval_ms = os.getenv("POLLING_INTERVAL_MS", "1000")
+polling_interval_s = int(polling_interval_ms) / 1000
 
 write_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
 
@@ -111,6 +113,6 @@ while True:
   write_battery_soc(83)
   print(f"Wrote data at {datetime.now().isoformat()}")
 
-  time.sleep(1)
+  time.sleep(polling_interval_s)
 
 modbus_client.close()
