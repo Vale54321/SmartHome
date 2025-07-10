@@ -1,4 +1,4 @@
-from clients.battery_modbus_client import BatteryModbusClient, REG
+from clients.e3dc_modbus_client import E3DCModbusClient, REG
 from clients.influx_writer import InfluxDBWriter
 from dotenv import load_dotenv
 import os
@@ -22,7 +22,7 @@ load_dotenv()
 # Modbus Client Setup
 ip = os.getenv("E3DC_IP")
 port = int(os.getenv("E3DC_PORT"))
-modbus_client = BatteryModbusClient(ip, port)
+modbus_client = E3DCModbusClient(ip, port)
 modbus_client.log_device_info()
 print()
 

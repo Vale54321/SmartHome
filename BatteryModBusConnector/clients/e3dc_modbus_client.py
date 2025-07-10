@@ -39,7 +39,7 @@ class REG(IntEnum):
     DC_STRING_2_POWER           = 40103
     DC_STRING_3_POWER           = 40104
 
-class BatteryModbusClient:
+class E3DCModbusClient:
     def __init__(self, ip, port, slave=1):
         self.client = ModbusTcpClient(ip, port=port)
         self.client.connect()
