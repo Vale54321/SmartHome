@@ -1,118 +1,81 @@
-from battery_modbus_client import BatteryModbusClient
+from clients.battery_modbus_client import BatteryModbusClient, REG
+from clients.influx_writer import InfluxDBWriter
 from dotenv import load_dotenv
 import os
 import time
-from datetime import datetime
-import influxdb_client
-from influxdb_client import Point
-from influxdb_client.client.write_api import SYNCHRONOUS
+import signal
+
+running = True
+
+def signal_handler(sig, frame):
+    """Handles signals and initiates a graceful shutdown."""
+    global running
+    print(f"Caught signal {sig}, shutting down gracefully...")
+    running = False
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 load_dotenv()
 
+# Modbus Client Setup
 ip = os.getenv("E3DC_IP")
 port = int(os.getenv("E3DC_PORT"))
 modbus_client = BatteryModbusClient(ip, port)
+modbus_client.log_device_info()
+print()
 
-magic_byte = modbus_client.read_register(1)
-if magic_byte is not None:
-    print(f"Register 40001 (Magic Byte): {hex(magic_byte)}")
-
-firmware_reg = modbus_client.read_register(2)
-if firmware_reg is not None:
-    major_version = firmware_reg >> 8
-    minor_version = firmware_reg & 0xFF
-    print(f"Register 40002 (Firmware): {major_version}.{minor_version}")
-
-reg_count = modbus_client.read_register(3)
-if reg_count is not None:
-    print(f"Register 40003 (Register Count): {reg_count}")
-
-manufacturer = modbus_client.read_string(4, 16)
-if manufacturer is not None:
-    print(f"Register 40004-40019 (Manufacturer): {manufacturer}")
-
-model_string = modbus_client.read_string(20, 16)
-if model_string is not None:
-    print(f"Register 40020-40035 (Modell): {model_string}")
-
-serial_num = modbus_client.read_string(36, 16)
-if serial_num is not None:
-    print(f"Register 40036-40051 (Serial Number): {serial_num}")
-
-firmware_version = modbus_client.read_string(52, 16)
-if firmware_version is not None:
-    print(f"Register 40052-40068 (Serial Number): {firmware_version}")
-
-
+# InfluxDB Client Setup
 token = os.environ.get("INFLUXDB_TOKEN")
 org = os.environ.get("INFLUXDB_ORG")
 url = os.environ.get("INFLUXDB_HOST")
+bucket = os.environ.get("INFLUXDB_BUCKET")
+influx_writer = InfluxDBWriter(url=url, token=token, org=org, bucket=bucket)
+
+# Polling Configuration
 polling_interval_ms = os.getenv("POLLING_INTERVAL_MS", "1000")
 polling_interval_s = int(polling_interval_ms) / 1000
 
-write_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+print("------- InfluxDB & Polling Config -------")
+print(f"URL:                  {url}")
+print(f"Org:                  {org}")
+print(f"Bucket:               {bucket}")
+print(f"Polling Interval:     {polling_interval_s}s")
+print("-----------------------------------------")
+print()
 
-bucket=os.environ.get("INFLUXDB_BUCKET")
+def poll_and_write_metrics():
+    """Polls all metrics from the Modbus device and writes them to InfluxDB."""
+    # Power Metrics
+    influx_writer.write_watts_metric("pv_power", modbus_client.read_metric(REG.PV_POWER))
+    influx_writer.write_watts_metric("battery_power", modbus_client.read_metric(REG.BATTERY_POWER))
+    influx_writer.write_watts_metric("house_consumption", modbus_client.read_metric(REG.HOUSE_CONSUMPTION))
+    influx_writer.write_watts_metric("grid_power", modbus_client.read_metric(REG.GRID_POWER))
+    influx_writer.write_watts_metric("additional_feed_in_power", modbus_client.read_metric(REG.ADDITIONAL_FEED_IN))
+    influx_writer.write_watts_metric("wallbox_consumption", modbus_client.read_metric(REG.WALLBOX_CONSUMPTION))
+    influx_writer.write_watts_metric("wallbox_solar_consumption", modbus_client.read_metric(REG.WALLBOX_SOLAR_CONSUMPTION))
 
-write_api = write_client.write_api(write_options=SYNCHRONOUS)
-   
-def write_power_metric(register, metric_name):
-    value = modbus_client.read_int32(register)
-    point = (
-        Point("battery_modbus_metrics")
-        .tag("metric", metric_name)
-        .field("value_watts", value)
-    )
-    write_api.write(bucket=bucket, org=org, record=point)
+    # Efficiency Metrics
+    self_sufficiency, self_consumption = modbus_client.read_metric(REG.EFFICIENCY)
+    influx_writer.write_percent_metric("self_sufficiency", self_sufficiency)
+    influx_writer.write_percent_metric("self_consumption", self_consumption)
 
-def write_efficiency(register):
-    """
-    Reads register, splits into autarkie% and eigenverbrauch%, and writes both as fields in one point.
-    """
-    val = modbus_client.read_register(register)
-    if val is None:
-        return
-    autarkie = val >> 8
-    eigenverbrauch = val & 0xFF
-    point = (
-        Point("battery_modbus_metrics")
-        .tag("metric", "self_consumption")
-        .field("value_percent", eigenverbrauch)
-    )
-    write_api.write(bucket=bucket, org=org, record=point)
-    point = (
-        Point("battery_modbus_metrics")
-        .tag("metric", "self_sufficiency")
-        .field("value_percent", autarkie)
-    )
-    write_api.write(bucket=bucket, org=org, record=point)
+    # Battery SoC
+    influx_writer.write_percent_metric("battery_soc", modbus_client.read_metric(REG.BATTERY_SOC))
 
-def write_battery_soc(register):
-    """
-    Reads battery state-of-charge percentage and writes it as a field.
-    """
-    soc = modbus_client.read_register(register)
-    if soc is None:
-        return
-    point = (
-        Point("battery_modbus_metrics")
-        .tag("metric", "battery_soc")
-        .field("value_percent", soc)
-    )
-    write_api.write(bucket=bucket, org=org, record=point)
+    # Emergency Power & EMS
+    influx_writer.write_int_metric("emergency_power_status", modbus_client.read_metric(REG.EMERGENCY_POWER_STATUS))
+    influx_writer.write_int_metric("ems_remote_control", modbus_client.read_metric(REG.EMS_REMOTE_CONTROL))
+    influx_writer.write_int_metric("ems_ctrl", modbus_client.read_metric(REG.EMS_CTRL))
 
-while True:
-  write_power_metric(68, "pv_power")
-  write_power_metric(70, "battery_power")
-  write_power_metric(72, "house_consumption")
-  write_power_metric(74, "grid_power")
-  write_power_metric(76, "additional_feed_in_power")
-  write_power_metric(78, "wallbox_consumption")
-  write_power_metric(80, "wallbox_solar_consumption")
-  write_efficiency(82)
-  write_battery_soc(83)
-  print(f"Wrote data at {datetime.now().isoformat()}")
+    ems_status_bits = modbus_client.get_ems_status_bits()
+    if ems_status_bits:
+        for key, value in ems_status_bits.items():
+            influx_writer.write_bool_metric(f"ems_{key}", value)
 
-  time.sleep(polling_interval_s)
+while running:
+    poll_and_write_metrics()
+    time.sleep(polling_interval_s)
 
-modbus_client.close()
+print("Application stopped.")
