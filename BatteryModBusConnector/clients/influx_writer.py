@@ -45,7 +45,7 @@ class InfluxDBWriter:
         point = (
             Point("battery_modbus_metrics")
             .tag("metric", metric_name)
-            .field("value", value)
+            .field("value", int(value))
         )
         self.write_api.write(bucket=self.bucket, org=self.org, record=point)
 
