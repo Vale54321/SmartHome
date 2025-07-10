@@ -6,7 +6,7 @@ WORKDIR /app
 COPY requirenments.txt .
 RUN pip install --no-cache-dir -r requirenments.txt
 
-COPY app.py .
+COPY main.py .
 COPY clients/ ./clients/
 
-CMD ["python", "app.py"]
+CMD ["python", "main.py"]
