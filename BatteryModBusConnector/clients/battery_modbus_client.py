@@ -28,6 +28,17 @@ class REG(IntEnum):
     EMS_REMOTE_CONTROL          = 40086
     EMS_CTRL                    = 40087
 
+    # DC String Metrics
+    DC_STRING_1_VOLTAGE         = 40096
+    DC_STRING_2_VOLTAGE         = 40097
+    DC_STRING_3_VOLTAGE         = 40098
+    DC_STRING_1_CURRENT         = 40099
+    DC_STRING_2_CURRENT         = 40100
+    DC_STRING_3_CURRENT         = 40101
+    DC_STRING_1_POWER           = 40102
+    DC_STRING_2_POWER           = 40103
+    DC_STRING_3_POWER           = 40104
+
 class BatteryModbusClient:
     def __init__(self, ip, port, slave=1):
         self.client = ModbusTcpClient(ip, port=port)
@@ -100,7 +111,13 @@ class BatteryModbusClient:
         elif metric in [REG.FIRMWARE, REG.EFFICIENCY]:
             return self._read_uint8_tuple(metric)
         # single register metrics (uint16)
-        elif metric in [REG.MAGIC_BYTE, REG.REGISTER_COUNT, REG.BATTERY_SOC, REG.EMERGENCY_POWER_STATUS, REG.EMS_STATUS, REG.EMS_REMOTE_CONTROL, REG.EMS_CTRL]:
+        elif metric in [
+            REG.MAGIC_BYTE, REG.REGISTER_COUNT, REG.BATTERY_SOC, 
+            REG.EMERGENCY_POWER_STATUS, REG.EMS_STATUS, REG.EMS_REMOTE_CONTROL, REG.EMS_CTRL,
+            REG.DC_STRING_1_VOLTAGE, REG.DC_STRING_2_VOLTAGE, REG.DC_STRING_3_VOLTAGE,
+            REG.DC_STRING_1_CURRENT, REG.DC_STRING_2_CURRENT, REG.DC_STRING_3_CURRENT,
+            REG.DC_STRING_1_POWER, REG.DC_STRING_2_POWER, REG.DC_STRING_3_POWER
+        ]:
             return self._read_register(metric)
         else:
             print(f"Unknown metric: {metric}")

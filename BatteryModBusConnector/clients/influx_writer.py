@@ -29,6 +29,26 @@ class InfluxDBWriter:
         )
         self.write_api.write(bucket=self.bucket, org=self.org, record=point)
 
+    def write_volts_metric(self, metric_name, value):
+        if value is None:
+            return
+        point = (
+            Point("battery_modbus_metrics")
+            .tag("metric", metric_name)
+            .field("value_volts", value)
+        )
+        self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+
+    def write_ampere_metric(self, metric_name, value):
+        if value is None:
+            return
+        point = (
+            Point("battery_modbus_metrics")
+            .tag("metric", metric_name)
+            .field("value_ampere", value)
+        )
+        self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+
     def write_int_metric(self, metric_name, value):
         if value is None:
             return

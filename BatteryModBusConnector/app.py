@@ -56,6 +56,17 @@ def poll_and_write_metrics():
     influx_writer.write_watts_metric("wallbox_consumption", modbus_client.read_metric(REG.WALLBOX_CONSUMPTION))
     influx_writer.write_watts_metric("wallbox_solar_consumption", modbus_client.read_metric(REG.WALLBOX_SOLAR_CONSUMPTION))
 
+    # DC String Metrics
+    influx_writer.write_volts_metric("dc_string_1_voltage", modbus_client.read_metric(REG.DC_STRING_1_VOLTAGE))
+    influx_writer.write_volts_metric("dc_string_2_voltage", modbus_client.read_metric(REG.DC_STRING_2_VOLTAGE))
+    influx_writer.write_volts_metric("dc_string_3_voltage", modbus_client.read_metric(REG.DC_STRING_3_VOLTAGE))
+    influx_writer.write_ampere_metric("dc_string_1_current", modbus_client.read_metric(REG.DC_STRING_1_CURRENT))
+    influx_writer.write_ampere_metric("dc_string_2_current", modbus_client.read_metric(REG.DC_STRING_2_CURRENT))
+    influx_writer.write_ampere_metric("dc_string_3_current", modbus_client.read_metric(REG.DC_STRING_3_CURRENT))
+    influx_writer.write_watts_metric("dc_string_1_power", modbus_client.read_metric(REG.DC_STRING_1_POWER))
+    influx_writer.write_watts_metric("dc_string_2_power", modbus_client.read_metric(REG.DC_STRING_2_POWER))
+    influx_writer.write_watts_metric("dc_string_3_power", modbus_client.read_metric(REG.DC_STRING_3_POWER))
+
     # Efficiency Metrics
     self_sufficiency, self_consumption = modbus_client.read_metric(REG.EFFICIENCY)
     influx_writer.write_percent_metric("self_sufficiency", self_sufficiency)
